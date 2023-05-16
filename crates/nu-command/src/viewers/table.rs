@@ -92,6 +92,11 @@ impl Command for Table {
                 "expand the table structure in collapse mode.\nBe aware collapse mode currently doesn't support width control",
                 Some('c'),
             )
+            .switch(
+                "nocolor", 
+                "remove all colors from the table", 
+                None
+            )
             .category(Category::Viewers)
     }
 
@@ -114,6 +119,7 @@ impl Command for Table {
         let flatten: bool = call.has_flag("flatten");
         let flatten_separator: Option<String> =
             call.get_flag(engine_state, stack, "flatten-separator")?;
+        let nocolor: bool = call.has_flag("nocolor");
 
         let table_view = match (expand, collapse) {
             (false, false) => TableView::General,
@@ -149,6 +155,7 @@ impl Command for Table {
             row_offset,
             table_view,
             width_param,
+            nocolor,
         )
     }
 
@@ -221,6 +228,7 @@ impl Command for Table {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_table_command(
     engine_state: &EngineState,
     stack: &mut Stack,
@@ -229,6 +237,7 @@ fn handle_table_command(
     row_offset: usize,
     table_view: TableView,
     term_width: Option<i64>,
+    nocolor: bool,
 ) -> Result<PipelineData, ShellError> {
     let ctrlc = engine_state.ctrlc.clone();
     let config = engine_state.get_config();
@@ -288,6 +297,7 @@ fn handle_table_command(
                 term_width,
                 ctrlc,
                 config,
+                nocolor,
             )
         }
         PipelineData::Value(Value::LazyRecord { val, .. }, ..) => {
@@ -300,6 +310,7 @@ fn handle_table_command(
                 row_offset,
                 table_view,
                 term_width,
+                nocolor,
             )
         }
         PipelineData::Value(Value::Error { error }, ..) => {
@@ -352,6 +363,7 @@ fn handle_record(
     term_width: usize,
     ctrlc: Option<Arc<AtomicBool>>,
     config: &Config,
+    nocolor: bool,
 ) -> Result<PipelineData, ShellError> {
     // Create a StyleComputer to compute styles for each value in the table.
     let style_computer = &StyleComputer::from_config(engine_state, stack);
@@ -366,6 +378,12 @@ fn handle_record(
             Some(output) => maybe_strip_color(output, config),
             None => report_unsuccessful_output(ctrlc1, term_width),
         }
+    };
+
+    let result = if nocolor {
+        nu_utils::strip_ansi_string_likely(result)
+    } else {
+        result
     };
 
     let val = Value::String {
